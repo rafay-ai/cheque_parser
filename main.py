@@ -194,7 +194,6 @@ def run_pipeline(
     print("\n[Step 6] Extracting other fields...")
     cheque_no = extract_cheque_number(detections, processed.shape[0])
     account_no = extract_account_number(detections)
-    payee = extract_payee(detections)
     bank_name = extract_bank_name(detections)
 
     numeric_amount = None
@@ -203,12 +202,10 @@ def run_pipeline(
             numeric_amount = float(amount_val.replace(",", ""))
         except ValueError:
             pass
-
     # ── 8. Build result with base64 crops
     result = {
         "bank_name": bank_name,
         "date": date_val,
-        "pay_to": payee,
         "amount_figures": amount_val,
         "amount_numeric": numeric_amount,
         "account_number": account_no,
