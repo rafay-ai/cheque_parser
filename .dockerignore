@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.git/
+.vscode/
+
+# Ignore local output and debug directories
+output/
+debug_output/
+
+# Ignore logs and temporary files
+*.md
+run_out.txt
+run_out2.txt
+inference_out.txt
+test_log.txt
+paddle_out.txt
+paddle_err.txt
+test_paddle.py
+_amount_crop_proc.jpg
