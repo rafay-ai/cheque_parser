@@ -688,3 +688,32 @@ def extract_payee(dets):
             break
         parts.append(_fix_camel(token))
     return " ".join(parts) or None
+
+
+def extract_micr(dets, image_height):
+    """
+    Extract the MICR line from the bottom of the cheque.
+    It typically contains a long string of digits and special characters.
+    """
+    cands = []
+    
+    # Bottom threshold: MICR is usually at the bottom-most part of the cheque.
+    # We use 50% of the image height as a conservative threshold.
+    min_y = image_height * 0.5 if image_height else 0
+    
+    for d in dets:
+        if bbox_y1(d) < min_y:
+            continue
+            
+        t = d["text"].strip()
+        # The MICR line should have a substantial number of digits
+        digs = re.sub(r"\D", "", t)
+        if len(digs) >= 15:
+            # Prioritize detections by how close they are to the bottom of the image
+            cands.append((bbox_y1(d), t))
+            
+    if not cands:
+        return None
+        
+    # the lowest detection that matches our criteria
+    return sorted(cands, key=lambda x: -x[0])[0][1]

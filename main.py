@@ -39,7 +39,8 @@ from src.extractor import (extract_account_number,
                            extract_bank_name, extract_cheque_number,
                            extract_date, extract_date_from_crop_ocr,
                            extract_payee, get_pay_region, get_pkr_region,
-                           get_region_right_of_label, get_rupees_region)
+                           get_region_right_of_label, get_rupees_region,
+                           extract_micr)
 from src.models.amount_net import AmountReader
 from src.models.date_net import DateReader
 from src.ocr_engine import OCREngine, fix_exif_rotation, preprocess_image
@@ -195,6 +196,7 @@ def run_pipeline(
     cheque_no = extract_cheque_number(detections, processed.shape[0])
     account_no = extract_account_number(detections)
     bank_name = extract_bank_name(detections)
+    micr = extract_micr(detections, processed.shape[0])
 
     numeric_amount = None
     if amount_val:
@@ -210,6 +212,7 @@ def run_pipeline(
         "amount_numeric": numeric_amount,
         "Iban number": account_no,
         "cheque_number": cheque_no,
+        "micr": micr,
         "crops": {
             "date": _crop_to_b64(date_crop),
             "amount": _crop_to_b64(amount_crop),
