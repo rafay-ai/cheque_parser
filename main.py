@@ -14,7 +14,7 @@ Output JSON structure:
   "pay_to": "...",
   "amount_figures": "16,780",
   "amount_numeric": 16780.0,
-  "account_number": "PK23...",
+  "Iban number": "PK23...",
   "cheque_number": "...",
   "crops": {
     "date":   "<base64 JPEG>",
@@ -208,7 +208,7 @@ def run_pipeline(
         "date": date_val,
         "amount_figures": amount_val,
         "amount_numeric": numeric_amount,
-        "account_number": account_no,
+        "Iban number": account_no,
         "cheque_number": cheque_no,
         "crops": {
             "date": _crop_to_b64(date_crop),
