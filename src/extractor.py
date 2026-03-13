@@ -337,11 +337,44 @@ def extract_date(dets):
                 return f"{r[:2]}/{r[2:4]}/{r[4:]}"
         return None
 
+    # Try each detection normally first
     for d in dets:
         t = d["text"].replace(" ", "")
         result = _parse(t) or _parse(t.translate(_DATE_CHAR_MAP))
         if result:
             return result
+
+    # Fallback: some cheques (e.g. HBL) print the date as spaced individual digits
+    # e.g. "0 5 1 1 5 2 0 2 5" — find detections near the "Date" label and concat digits
+    date_det = None
+    for d in dets:
+        if re.search(r"^date$", d["text"].strip(), re.IGNORECASE):
+            date_det = d
+            break
+
+    if date_det is not None:
+        date_yc = bbox_center_y(date_det)
+        date_x2 = bbox_x2(date_det)
+        # Collect all detections on the same row to the right of "Date"
+        row_tokens = []
+        for d in dets:
+            if d is date_det:
+                continue
+            if abs(bbox_center_y(d) - date_yc) < 40 and bbox_x1(d) > date_x2 - 10:
+                row_tokens.append((bbox_x1(d), d["text"]))
+        row_tokens.sort()
+        combined = "".join(t for _, t in row_tokens).replace(" ", "")
+        # Apply char map and try to parse
+        combined = combined.translate(_DATE_CHAR_MAP)
+        result = _parse(combined)
+        if result:
+            return result
+        # Try extracting just digits
+        digs = re.sub(r"\D", "", combined)
+        result = _parse(digs)
+        if result:
+            return result
+
     return None
 
 
@@ -655,36 +688,51 @@ def extract_account_number(dets):
 
 def extract_account_number_from_micr(micr_str):
     """
-    Extract the account number from the MICR string.
-    The MICR usually consists of:
-    1. Cheque number (typically 8 digits)
-    2. Branch/routing code (typically 7 digits)
-    3. Account number (the rest, optionally followed by a transaction code)
+    Extract account number from MICR line.
+    MICR format: "CHEQUE_NO" BRANCH_CODE : ACCOUNT_NO "TRANSACTION"
+    e.g. "00000004"0540056:0000567901558399"000"
+    
+    Structure:
+      part[0] = cheque number   (~8 digits)
+      part[1] = branch code     (~7 digits)  
+      part[2] = account number  (variable, strip trailing padding zeros)
+      part[3] = transaction     (~3 digits, padding — drop it)
     """
     if not micr_str:
         return None
-    
-    # Clean string and split by any non-digit separator (like : or -)
+
     s = micr_str.replace(" ", "")
     parts = [p for p in re.split(r'\D+', s) if p]
-    
+
     if len(parts) >= 3:
-        # e.g. 00000007, 05400561, 0000567901558399000
-        return "".join(parts[2:])
+        # parts[0]=cheque, parts[1]=branch, parts[2]=account, parts[3+]=padding
+        acc = parts[2]
+        # Strip trailing zeros that are padding (last segment is usually "000")
+        # Only strip if the last part looks like padding (all zeros, <=4 digits)
+        if len(parts) >= 4:
+            tail = parts[3]
+            if re.fullmatch(r'0+', tail) and len(tail) <= 4:
+                pass  # drop it — don't append
+            else:
+                acc = acc + tail  # it's real data
+        return acc.rstrip('0') if acc.endswith('000') else acc
+
     elif len(parts) == 2:
-        # e.g. 125137560210127 : 0113200460350001000
-        # If the first part is long enough to cover both cheque and branch
+        # e.g. "125137560210127:0113200460350001000"
+        # first part covers cheque+branch (>=14 digits), second is account+padding
         if len(parts[0]) >= 14:
-            return "".join(parts[1:])
+            acc = parts[1]
+            return re.sub(r'0{1,4}$', '', acc) if acc.endswith('000') else acc
         else:
             return parts[1]
+
     elif len(parts) == 1:
-        # No separators found, it's a single contiguous string of digits
-        # Typical prefix is 8 (cheque) + 7 (branch) = 15 digits
+        # No separators — cheque(8) + branch(7) + account
         if len(s) > 15:
-            return s[15:]
+            acc = s[15:]
+            return re.sub(r'0{1,4}$', '', acc) if acc.endswith('000') else acc
         return s
-    
+
     return None
 
 
@@ -755,27 +803,25 @@ def extract_payee(dets):
 def extract_micr(dets, image_height):
     """
     Extract the MICR line from the bottom of the cheque.
-    It typically contains a long string of digits and special characters.
+    Format: "CHEQUE_NO"BRANCH_CODE:ACCOUNT_NO"TRANSACTION"
     """
     cands = []
-    
-    # Bottom threshold: MICR is usually at the bottom-most part of the cheque.
-    # We use 50% of the image height as a conservative threshold.
-    min_y = image_height * 0.5 if image_height else 0
-    
+
+    # Lower threshold to 40% — some cheques have MICR higher up
+    min_y = image_height * 0.40 if image_height else 0
+
     for d in dets:
         if bbox_y1(d) < min_y:
             continue
-            
+
         t = d["text"].strip()
-        # The MICR line should have a substantial number of digits
         digs = re.sub(r"\D", "", t)
-        if len(digs) >= 15:
-            # Prioritize detections by how close they are to the bottom of the image
+        # Relax to 12 digits to catch partial reads
+        if len(digs) >= 12:
             cands.append((bbox_y1(d), t))
-            
+
     if not cands:
         return None
-        
-    # the lowest detection that matches our criteria
+
+    # Return the lowest (bottommost) match
     return sorted(cands, key=lambda x: -x[0])[0][1]

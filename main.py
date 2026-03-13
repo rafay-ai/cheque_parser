@@ -205,20 +205,8 @@ def run_pipeline(
     bank_name = extract_bank_name(detections)
     micr = extract_micr(detections, processed.shape[0])
     acc_from_micr = extract_account_number_from_micr(micr)
-
-    if acc_from_micr:
-        if account_no:
-            alpha_num = re.sub(r'\D', '', account_no)
-            matched = False
-            for i in range(len(acc_from_micr), 0, -1):
-                if alpha_num.endswith(acc_from_micr[:i]):
-                    acc_from_micr = acc_from_micr[:i]
-                    matched = True
-                    break
-            if not matched and len(acc_from_micr) > 16 and acc_from_micr.endswith("000"):
-                acc_from_micr = acc_from_micr[:-3]
-        elif len(acc_from_micr) > 16 and acc_from_micr.endswith("000"):
-            acc_from_micr = acc_from_micr[:-3]
+    print(f"  [MICR raw]: {micr}")
+    print(f"  [MICR account]: {acc_from_micr}")
 
     numeric_amount = None
     amount_in_alphabets = None
