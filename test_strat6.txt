@@ -1,0 +1,4 @@
+Found box-like contours: 9
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 1 regions detected
+Stitched result: ['PO0082025']

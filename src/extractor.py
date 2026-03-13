@@ -128,7 +128,7 @@ def get_rupees_region(image, dets):
     stops before the IBAN / account line."""
     rupees_det = None
     for d in dets:
-        if re.search(r"^rupees?$", d["text"].strip(), re.IGNORECASE):
+        if re.search(r"^ru[pg]ees?", d["text"].strip(), re.IGNORECASE):
             rupees_det = d
             break
     if rupees_det is None:
@@ -192,6 +192,33 @@ def get_pkr_region(image, dets):
             crop = image[max(0, y1 - 15) : min(h, y2 + 20), max(0, x1 - 10) : w]
             return crop if crop.size > 0 else None
     return None
+
+
+def get_signature_region(image, dets):
+    sig_det = None
+    for d in dets:
+        if re.search(r"^signature", d["text"].strip(), re.IGNORECASE):
+            sig_det = d
+            break
+
+    if sig_det is None:
+        return None, None
+
+    pts = _pts(sig_det)
+    label_y1 = int(pts[:, 1].min())
+    label_y2 = int(pts[:, 1].max())
+
+    h, w = image.shape[:2]
+    label_h = label_y2 - label_y1
+
+    # Signature ink sits just above the label — tighten vertical range
+    crop_y1 = max(0, label_y1 - label_h * 3)  # was 5, now 3
+    crop_y2 = min(h, label_y2)
+    crop_x1 = w // 2
+    crop_x2 = w
+
+    crop = image[crop_y1:crop_y2, crop_x1:crop_x2]
+    return (crop if crop.size > 0 else None), sig_det
 
 
 # ─── Constants ───────────────────────────────────────────────────────────────
@@ -623,6 +650,41 @@ def extract_account_number(dets):
         m = re.search(r"\b(\d{14,20})\b", d["text"].replace(" ", ""))
         if m:
             return m.group(1)
+    return None
+
+
+def extract_account_number_from_micr(micr_str):
+    """
+    Extract the account number from the MICR string.
+    The MICR usually consists of:
+    1. Cheque number (typically 8 digits)
+    2. Branch/routing code (typically 7 digits)
+    3. Account number (the rest, optionally followed by a transaction code)
+    """
+    if not micr_str:
+        return None
+    
+    # Clean string and split by any non-digit separator (like : or -)
+    s = micr_str.replace(" ", "")
+    parts = [p for p in re.split(r'\D+', s) if p]
+    
+    if len(parts) >= 3:
+        # e.g. 00000007, 05400561, 0000567901558399000
+        return "".join(parts[2:])
+    elif len(parts) == 2:
+        # e.g. 125137560210127 : 0113200460350001000
+        # If the first part is long enough to cover both cheque and branch
+        if len(parts[0]) >= 14:
+            return "".join(parts[1:])
+        else:
+            return parts[1]
+    elif len(parts) == 1:
+        # No separators found, it's a single contiguous string of digits
+        # Typical prefix is 8 (cheque) + 7 (branch) = 15 digits
+        if len(s) > 15:
+            return s[15:]
+        return s
+    
     return None
 
 

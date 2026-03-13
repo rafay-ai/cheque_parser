@@ -1,0 +1,4 @@
+Found digit-sized contours: 9
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 1 regions detected
+Digit contours result: ['1202']

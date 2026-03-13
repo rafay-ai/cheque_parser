@@ -1,0 +1,32 @@
+=== Full image OCR detections ===
+  [00] conf=0.98  "ISLAMIC BANKING"
+  [01] conf=0.98  "HBL"
+  [02] conf=1.00  "ChequeNo"
+  [03] conf=1.00  "00000164"
+  [04] conf=0.96  "Habib Bank Limited, Pakistan"
+  [05] conf=0.99  "Date"
+  [06] conf=0.94  "SHAHBAZ COMMERCIAL DHA PLOT NO. 34-C,"
+  [07] conf=0.99  "KHAYABAN-E-SHAHBAZ"
+  [08] conf=0.86  "E.O.B.I"
+  [09] conf=0.99  "Pay"
+  [10] conf=0.61  "3ooupunff!s"
+  [11] conf=0.90  "PKR99,613"
+  [12] conf=0.92  "Ninety Nine"
+  [13] conf=0.93  "Thousand"
+  [14] conf=1.00  "Rupees"
+  [15] conf=0.76  "Jonly"
+  [16] conf=0.90  "hirteen"
+  [17] conf=0.87  "Naweed"
+  [18] conf=0.99  "PK91HABB0054507000013855"
+  [19] conf=0.96  "UNIKREW SOLUTIONS (PVT)LTD"
+  [20] conf=1.00  "Signature"
+  [21] conf=0.95  "Please do not write below this Line"
+  [22] conf=0.96  "000001640545450:0054507000013855-000"
+
+=== extract_date result ===
+  Date: None
+
+=== Date crop OCR ===
+
+=== extract_date_from_crop_ocr ===
+  Date from crop: None

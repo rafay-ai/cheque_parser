@@ -1,0 +1,6 @@
+col_sums: (941,)
+Found large contours: 11
+Digit width approx: 8.25
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 0 regions detected
+Stitched result: []

@@ -1,0 +1,19 @@
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 1 regions detected
+block=5 C=5 ['00002023']
+[OCREngine] 0 regions detected
+block=5 C=10 []
+[OCREngine] 0 regions detected
+block=5 C=15 []
+[OCREngine] 1 regions detected
+block=11 C=5 ['p08202s']
+[OCREngine] 1 regions detected
+block=11 C=10 ['002202s']
+[OCREngine] 0 regions detected
+block=11 C=15 []
+[OCREngine] 1 regions detected
+block=21 C=5 ['p08202s']
+[OCREngine] 1 regions detected
+block=21 C=10 ['00082025']
+[OCREngine] 1 regions detected
+block=21 C=15 ['0008202s']

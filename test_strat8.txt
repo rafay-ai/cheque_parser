@@ -1,0 +1,11 @@
+Found boxes: 8
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 0 regions detected
+[OCREngine] 0 regions detected
+[OCREngine] 0 regions detected
+[OCREngine] 1 regions detected
+[OCREngine] 1 regions detected
+[OCREngine] 1 regions detected
+[OCREngine] 1 regions detected
+[OCREngine] 1 regions detected
+Digit by digit OCR: ['', '', '', '8', '2', '0', '2', 'S']

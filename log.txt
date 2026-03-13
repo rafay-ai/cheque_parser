@@ -1,0 +1,90 @@
+
+============================================================
+  CHEQUE PARSER
+============================================================
+  [DateReader] detected rnn input_size=256
+[DateReader] loaded on cpu
+  [AmountReader] rnn_input=256  hidden=256  classes=11
+  [AmountReader] actual rnn_input=256
+[AmountReader] loaded on cpu
+
+[Step 1] Loading: images/shared image (6).jpg
+[EXIF] rotation corrected
+  Shape after preprocessing: (1616, 3062, 3)
+
+[Step 2] Running PaddleOCR...
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 23 regions detected
+
+─── Raw OCR output ─────────────────────────────────────
+  [00] conf=0.98  "ISLAMIC BANKING"
+  [01] conf=0.98  "HBL"
+  [02] conf=1.00  "ChequeNo"
+  [03] conf=1.00  "00000164"
+  [04] conf=0.96  "Habib Bank Limited, Pakistan"
+  [05] conf=0.99  "Date"
+  [06] conf=0.94  "SHAHBAZ COMMERCIAL DHA PLOT NO. 34-C,"
+  [07] conf=0.99  "KHAYABAN-E-SHAHBAZ"
+  [08] conf=0.86  "E.O.B.I"
+  [09] conf=0.99  "Pay"
+  [10] conf=0.61  "3ooupunff!s"
+  [11] conf=0.90  "PKR99,613"
+  [12] conf=0.92  "Ninety Nine"
+  [13] conf=0.93  "Thousand"
+  [14] conf=1.00  "Rupees"
+  [15] conf=0.76  "Jonly"
+  [16] conf=0.90  "hirteen"
+  [17] conf=0.87  "Naweed"
+  [18] conf=0.99  "PK91HABB0054507000013855"
+  [19] conf=0.96  "UNIKREW SOLUTIONS (PVT)LTD"
+  [20] conf=1.00  "Signature"
+  [21] conf=0.95  "Please do not write below this Line"
+  [22] conf=0.96  "000001640545450:0054507000013855-000"
+────────────────────────────────────────────────────────
+
+[Step 3] Cropping regions of interest...
+  [saved] debug_test\date_crop.jpg
+  [saved] debug_test\amount_crop.jpg
+  [saved] debug_test\pay_crop.jpg
+  [saved] debug_test\rupees_crop.jpg
+
+[Step 4] Extracting DATE...
+  [date] trying DateNet model...
+  [DateReader] raw='/84/4'  conf=0.883
+  [date] trying PaddleOCR crop fallback...
+[OCREngine] 1 regions detected
+  [date OCR 4x+Otsu]: "00108202s" conf=0.81
+[OCREngine] 1 regions detected
+  [date OCR 4x+Adaptive]: "10182025" conf=0.63
+
+[Step 5] Extracting AMOUNT...
+  [amount PKR token]: 'PKR99,613' → 99,613
+  [amount] full-image PaddleOCR: 99,613
+
+[Step 6] Extracting other fields...
+
+=======================================================
+         EXTRACTED CHEQUE FIELDS
+=======================================================
+  Bank Name             : HBL
+  Date                  : None
+  Amount Figures        : 99,613
+  Amount Numeric        : 99613.0
+  Iban Number           : PK91HABB0054507000013855
+  Account Number        : 000
+  Cheque Number         : 00000164
+  Micr                  : 000001640545450:0054507000013855-000
+  crop_date             : <base64 25968 chars>
+  crop_amount           : <base64 24348 chars>
+  crop_pay              : <base64 53064 chars>
+  crop_rupees           : <base64 149332 chars>
+=======================================================
+
+  ⚠  Date could not be parsed.
+
+[Step 7] Saving debug images...
+  [saved] debug_test\ocr_detections.jpg
+  [saved] debug_test/preprocessed.jpg
+
+  📁 'debug_test/' → preprocessed, date_crop, amount_crop, pay_crop, rupees_crop, ocr_detections
+  [saved] debug_test\result.json

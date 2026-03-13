@@ -1,0 +1,3 @@
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 1 regions detected
+morph1 ['00082025']

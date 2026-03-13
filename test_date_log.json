@@ -1,0 +1,41 @@
+{
+  "RemoveLines+Otsu": {
+    "dets": [
+      {
+        "text": "K9 0 202 S",
+        "conf": 0.61
+      }
+    ],
+    "digits": "902025"
+  },
+  "RemoveLines+Adaptive": {
+    "dets": [],
+    "digits": ""
+  },
+  "CLAHE+Sharpen": {
+    "dets": [
+      {
+        "text": "82028",
+        "conf": 0.74
+      }
+    ],
+    "digits": "82028"
+  },
+  "3x+Plain": {
+    "dets": [],
+    "digits": ""
+  },
+  "CleanOnly": {
+    "dets": [
+      {
+        "text": "K9 0 202 S",
+        "conf": 0.61
+      }
+    ],
+    "digits": "902025"
+  },
+  "2x+Plain": {
+    "dets": [],
+    "digits": ""
+  }
+}

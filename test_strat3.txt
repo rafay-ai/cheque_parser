@@ -1,0 +1,3 @@
+[OCREngine] PaddleOCR loaded (CPU mode)
+[OCREngine] 2 regions detected
+boxes_removed ['001', '0']

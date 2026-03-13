@@ -30,9 +30,11 @@ import base64
 import glob
 import json
 import os
+import re
 
 import cv2
 import numpy as np
+from num2words import num2words
 
 from src.extractor import (extract_account_number,
                            extract_amount_from_crop_ocr, extract_amount_ocr,
@@ -40,7 +42,8 @@ from src.extractor import (extract_account_number,
                            extract_date, extract_date_from_crop_ocr,
                            extract_payee, get_pay_region, get_pkr_region,
                            get_region_right_of_label, get_rupees_region,
-                           extract_micr)
+                           get_signature_region,
+                           extract_micr, extract_account_number_from_micr)
 from src.models.amount_net import AmountReader
 from src.models.date_net import DateReader
 from src.ocr_engine import OCREngine, fix_exif_rotation, preprocess_image
@@ -151,6 +154,10 @@ def run_pipeline(
     # RUPEES — smart crop: includes continuation lines below "Rupees" label
     rupees_crop, _ = get_rupees_region(processed, detections)
     _save_crop(rupees_crop, "rupees_crop.jpg", cheque_debug_dir)
+    
+    # SIGNATURE
+    signature_crop, _ = get_signature_region(processed, detections)
+    _save_crop(signature_crop, "signature_crop.jpg", cheque_debug_dir)
 
     # ── 5. Extract DATE
     print("\n[Step 4] Extracting DATE...")
@@ -197,20 +204,46 @@ def run_pipeline(
     account_no = extract_account_number(detections)
     bank_name = extract_bank_name(detections)
     micr = extract_micr(detections, processed.shape[0])
+    acc_from_micr = extract_account_number_from_micr(micr)
+
+    if acc_from_micr:
+        if account_no:
+            alpha_num = re.sub(r'\D', '', account_no)
+            matched = False
+            for i in range(len(acc_from_micr), 0, -1):
+                if alpha_num.endswith(acc_from_micr[:i]):
+                    acc_from_micr = acc_from_micr[:i]
+                    matched = True
+                    break
+            if not matched and len(acc_from_micr) > 16 and acc_from_micr.endswith("000"):
+                acc_from_micr = acc_from_micr[:-3]
+        elif len(acc_from_micr) > 16 and acc_from_micr.endswith("000"):
+            acc_from_micr = acc_from_micr[:-3]
 
     numeric_amount = None
+    amount_in_alphabets = None
     if amount_val:
         try:
             numeric_amount = float(amount_val.replace(",", ""))
+            rupees = int(numeric_amount)
+            paisas = int(round((numeric_amount - rupees) * 100))
+            r_str = num2words(rupees).title().replace(",", "") + " Rupees"
+            if paisas > 0:
+                p_str = num2words(paisas).title() + " Paisas"
+                amount_in_alphabets = f"{r_str} And {p_str}"
+            else:
+                amount_in_alphabets = f"{r_str} Only"
         except ValueError:
             pass
     # ── 8. Build result with base64 crops
     result = {
         "bank_name": bank_name,
         "date": date_val,
-        "amount_figures": amount_val,
+        "amount_figures": amount_in_alphabets,
         "amount_numeric": numeric_amount,
+        "amount_in_alphabets": amount_in_alphabets,
         "Iban number": account_no,
+        "account_number": acc_from_micr,
         "cheque_number": cheque_no,
         "micr": micr,
         "crops": {
@@ -218,6 +251,7 @@ def run_pipeline(
             "amount": _crop_to_b64(amount_crop),
             "pay": _crop_to_b64(pay_crop),
             "rupees": _crop_to_b64(rupees_crop),
+            "signature": _crop_to_b64(signature_crop),
         },
     }
 
