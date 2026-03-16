@@ -1,9 +1,0 @@
-[OCREngine] PaddleOCR loaded (CPU mode)
-[OCREngine] 1 regions detected
-blur+otsu ['0008202s']
-[OCREngine] 1 regions detected
-blur+4x+otsu ['00108202s']
-[OCREngine] 1 regions detected
-4x+blur+otsu ['00108202s']
-[OCREngine] 1 regions detected
-blur+4x+adapt ['0010 0 202']

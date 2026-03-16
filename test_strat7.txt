@@ -1,4 +1,0 @@
-Found box-like contours: 8
-[OCREngine] PaddleOCR loaded (CPU mode)
-[OCREngine] 2 regions detected
-Stitched result: ['0', '9']

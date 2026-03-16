@@ -40,9 +40,9 @@ from src.extractor import (extract_account_number,
                            extract_amount_from_crop_ocr, extract_amount_ocr,
                            extract_bank_name, extract_cheque_number,
                            extract_date, extract_date_from_crop_ocr,
-                           extract_payee, get_pay_region, get_pkr_region,
-                           get_region_right_of_label, get_rupees_region,
-                           get_signature_region,
+                           extract_payee, get_date_region, get_pay_region,
+                           get_pkr_region, get_region_right_of_label,
+                           get_rupees_region, get_signature_region,
                            extract_micr, extract_account_number_from_micr)
 from src.models.amount_net import AmountReader
 from src.models.date_net import DateReader
@@ -133,10 +133,8 @@ def run_pipeline(
     # ── 4. Crop all 4 regions
     print("\n[Step 3] Cropping regions of interest...")
 
-    # DATE — right of "Date" label
-    date_crop, _ = get_region_right_of_label(
-        processed, detections, r"^date$", pad_top=25, pad_bottom=35
-    )
+    # DATE — generous crop using date label + cheque no as anchors
+    date_crop, _ = get_date_region(processed, detections)
     _save_crop(date_crop, "date_crop.jpg", cheque_debug_dir)
 
     # AMOUNT — PKR box or right of "Rupees"

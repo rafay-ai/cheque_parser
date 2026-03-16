@@ -68,6 +68,51 @@ def get_region_right_of_label(
     return (crop if crop.size > 0 else None), label_det
 
 
+def get_date_region(image, dets):
+    """
+    Crop the date area generously.
+    Uses the 'Date' label as anchor; if that fails, uses 'Cheque No' row.
+    Returns a crop tall enough to include the full HBL digit-box row.
+    """
+    date_det = None
+    for d in dets:
+        if re.search(r"^date$", d["text"].strip(), re.IGNORECASE):
+            date_det = d
+            break
+
+    h, w = image.shape[:2]
+
+    if date_det is not None:
+        pts = _pts(date_det)
+        lx2 = int(pts[:, 0].max())
+        ly1 = int(pts[:, 1].min())
+        ly2 = int(pts[:, 1].max())
+        lh  = max(ly2 - ly1, 20)
+
+        crop_y1 = max(0, ly1 - lh)
+        crop_y2 = min(h, ly2 + lh * 3)   # 3× label height below covers digit boxes
+        crop_x1 = max(0, lx2 - 10)
+        crop = image[crop_y1:crop_y2, crop_x1:w]
+        if crop.size > 0:
+            return crop, date_det
+
+    # Fallback: use Cheque No row — date is on the same horizontal band
+    for d in dets:
+        if re.search(r"cheque\s*no", d["text"], re.IGNORECASE):
+            pts = _pts(d)
+            cy1 = int(pts[:, 1].min())
+            cy2 = int(pts[:, 1].max())
+            ch  = max(cy2 - cy1, 20)
+            crop_y1 = max(0, cy1 - ch)
+            crop_y2 = min(h, cy2 + ch * 3)
+            crop = image[crop_y1:crop_y2, w // 2 : w]   # right half only
+            if crop.size > 0:
+                return crop, d
+            break
+
+    return None, None
+
+
 def _find_pkr_box_x(dets):
     """Find the left x-coordinate of the PKR amount box."""
     for d in dets:
@@ -337,53 +382,72 @@ def extract_date(dets):
                 return f"{r[:2]}/{r[2:4]}/{r[4:]}"
         return None
 
-    # Try each detection normally first
     for d in dets:
         t = d["text"].replace(" ", "")
         result = _parse(t) or _parse(t.translate(_DATE_CHAR_MAP))
         if result:
             return result
-
-    # Fallback: some cheques (e.g. HBL) print the date as spaced individual digits
-    # e.g. "0 5 1 1 5 2 0 2 5" — find detections near the "Date" label and concat digits
-    date_det = None
-    for d in dets:
-        if re.search(r"^date$", d["text"].strip(), re.IGNORECASE):
-            date_det = d
-            break
-
-    if date_det is not None:
-        date_yc = bbox_center_y(date_det)
-        date_x2 = bbox_x2(date_det)
-        # Collect all detections on the same row to the right of "Date"
-        row_tokens = []
-        for d in dets:
-            if d is date_det:
-                continue
-            if abs(bbox_center_y(d) - date_yc) < 40 and bbox_x1(d) > date_x2 - 10:
-                row_tokens.append((bbox_x1(d), d["text"]))
-        row_tokens.sort()
-        combined = "".join(t for _, t in row_tokens).replace(" ", "")
-        # Apply char map and try to parse
-        combined = combined.translate(_DATE_CHAR_MAP)
-        result = _parse(combined)
-        if result:
-            return result
-        # Try extracting just digits
-        digs = re.sub(r"\D", "", combined)
-        result = _parse(digs)
-        if result:
-            return result
-
     return None
 
 
+def _extract_date_contour(date_crop):
+    """
+    Last-resort: find individual digit boxes by contour detection.
+    Works for HBL-style cheques where each date digit is in its own printed box.
+    Sorts boxes left→right, reads digit from each, assembles DDMMYYYY.
+    """
+    gray = cv2.cvtColor(date_crop, cv2.COLOR_BGR2GRAY)
+    # Invert so boxes are white on black
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    h_img, w_img = date_crop.shape[:2]
+    boxes = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # Filter: each digit box should be roughly square-ish and a reasonable fraction of image height
+        aspect = w / max(h, 1)
+        if h < h_img * 0.4 or h > h_img * 1.1:
+            continue
+        if aspect < 0.3 or aspect > 2.0:
+            continue
+        if w < 10 or h < 10:
+            continue
+        boxes.append((x, y, w, h))
+
+    # Deduplicate overlapping boxes (keep largest)
+    boxes.sort(key=lambda b: b[0])
+    merged = []
+    for box in boxes:
+        if merged and box[0] < merged[-1][0] + merged[-1][2] * 0.5:
+            # Overlapping — keep larger
+            if box[2] * box[3] > merged[-1][2] * merged[-1][3]:
+                merged[-1] = box
+        else:
+            merged.append(box)
+
+    # Expect 6-8 boxes (some digits may be missed by contour detection)
+    if len(merged) < 4 or len(merged) > 10:
+        return None
+
+    return merged  # sorted left→right
+
+
 def extract_date_from_crop_ocr(date_crop, ocr_engine):
+    """
+    Multi-strategy OCR on the date crop.
+    Priority:
+      1. Raw crop (no processing) — works when PaddleOCR just needs bigger image
+      2. 4x upscale variants
+      3. Contour-stitch (HBL digit boxes)
+    """
     if date_crop is None:
         return None
 
     def try_digits(s):
-        m = re.search(r"(\d{8})", s)
+        s2 = s.translate(_DATE_CHAR_MAP)
+        digs = re.sub(r"\D", "", s2)
+        m = re.search(r"(\d{8})", digs)
         if m:
             r = m.group(1)
             dd, mm, yy = int(r[:2]), int(r[2:4]), int(r[4:])
@@ -391,52 +455,74 @@ def extract_date_from_crop_ocr(date_crop, ocr_engine):
                 return f"{r[:2]}/{r[2:4]}/{r[4:]}"
         return None
 
-    strategies = {
-        "4x+Otsu": lambda img: cv2.cvtColor(
-            cv2.threshold(
-                cv2.cvtColor(
-                    cv2.resize(img, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC),
-                    cv2.COLOR_BGR2GRAY,
-                ),
-                0,
-                255,
-                cv2.THRESH_BINARY + cv2.THRESH_OTSU,
-            )[1],
-            cv2.COLOR_GRAY2BGR,
-        ),
-        "4x+Adaptive": lambda img: cv2.cvtColor(
-            cv2.adaptiveThreshold(
-                cv2.cvtColor(
-                    cv2.resize(img, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC),
-                    cv2.COLOR_BGR2GRAY,
-                ),
-                255,
-                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY,
-                11,
-                2,
-            ),
-            cv2.COLOR_GRAY2BGR,
-        ),
-    }
+    def _run_and_parse(img_bgr, label):
+        cv2.imwrite("_date_proc_tmp.jpg", img_bgr)
+        dets = ocr_engine.run("_date_proc_tmp.jpg")
+        all_text = " ".join(d["text"] for d in dets)
+        if dets:
+            print(f'  [date OCR {label}]: "{all_text}"')
+        combined = "".join(d["text"] for d in dets).replace(" ", "")
+        return try_digits(combined)
 
-    for name, transform_fn in strategies.items():
-        try:
-            proc = transform_fn(date_crop)
-            cv2.imwrite("_date_crop_proc.jpg", proc)
-            crop_dets = ocr_engine.run("_date_crop_proc.jpg")
-            all_digits = ""
-            for det in crop_dets:
-                print(
-                    f"  [date OCR {name}]: \"{det['text']}\" conf={det['confidence']:.2f}"
-                )
-                all_digits += re.sub(r"\D", "", det["text"].translate(_DATE_CHAR_MAP))
-            result = try_digits(all_digits)
-            if result:
-                print(f"  [date found via {name}]: {result}")
-                return result
-        except Exception as e:
-            print(f"  [date OCR {name} error]: {e}")
+    # ── Strategy 1: raw crop as-is ──────────────────────────────────────
+    result = _run_and_parse(date_crop, "raw")
+    if result: return result
+
+    # ── Strategy 2: 4x upscale + grayscale ─────────────────────────────
+    big = cv2.resize(date_crop, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+    result = _run_and_parse(big, "4x+gray")
+    if result: return result
+
+    # ── Strategy 3: 4x + Otsu threshold ────────────────────────────────
+    gray = cv2.cvtColor(big, cv2.COLOR_BGR2GRAY)
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    result = _run_and_parse(cv2.cvtColor(otsu, cv2.COLOR_GRAY2BGR), "4x+Otsu")
+    if result: return result
+
+    # ── Strategy 4: 4x + adaptive threshold ────────────────────────────
+    adapt = cv2.adaptiveThreshold(gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 4)
+    result = _run_and_parse(cv2.cvtColor(adapt, cv2.COLOR_GRAY2BGR), "4x+Adaptive")
+    if result: return result
+
+    # ── Strategy 5: contour stitch (HBL individual digit boxes) ────────
+    print("  [date] trying contour stitch...")
+    try:
+        boxes = _extract_date_contour(big)
+        print(f"  [date contour] found {len(boxes) if boxes else 0} boxes")
+        if boxes:
+            bh2, bw2 = big.shape[:2]
+            target_h = 80
+            cell_imgs = []
+            for (x, y, bw_, bh_) in boxes:
+                pad = 8
+                cell = big[max(0,y-pad):min(bh2,y+bh_+pad),
+                           max(0,x-pad):min(bw2,x+bw_+pad)]
+                if cell.size == 0:
+                    cell_imgs.append(np.ones((target_h+20, target_h, 3), np.uint8)*255)
+                    continue
+                ch2, cw2 = cell.shape[:2]
+                scale = target_h / max(ch2, 1)
+                resized = cv2.resize(cell, (max(1,int(cw2*scale)), target_h),
+                                     interpolation=cv2.INTER_CUBIC)
+                bordered = cv2.copyMakeBorder(resized, 10, 10, 10, 10,
+                                              cv2.BORDER_CONSTANT, value=(255,255,255))
+                # Threshold each cell individually for clean black-on-white
+                cell_gray = cv2.cvtColor(bordered, cv2.COLOR_BGR2GRAY)
+                _, cell_thresh = cv2.threshold(cell_gray, 0, 255,
+                                               cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                cell_imgs.append(cv2.cvtColor(cell_thresh, cv2.COLOR_GRAY2BGR))
+
+            canvas = np.hstack(cell_imgs)
+            os.makedirs("debug_output", exist_ok=True)
+            cv2.imwrite("debug_output/_date_stitch.jpg", canvas)
+            result = _run_and_parse(canvas, "stitch")
+            if result: return result
+    except Exception as e:
+        import traceback
+        print(f"  [date stitch error]: {e}")
+        traceback.print_exc()
+
     return None
 
 
@@ -688,51 +774,36 @@ def extract_account_number(dets):
 
 def extract_account_number_from_micr(micr_str):
     """
-    Extract account number from MICR line.
-    MICR format: "CHEQUE_NO" BRANCH_CODE : ACCOUNT_NO "TRANSACTION"
-    e.g. "00000004"0540056:0000567901558399"000"
-    
-    Structure:
-      part[0] = cheque number   (~8 digits)
-      part[1] = branch code     (~7 digits)  
-      part[2] = account number  (variable, strip trailing padding zeros)
-      part[3] = transaction     (~3 digits, padding — drop it)
+    Extract the account number from the MICR string.
+    The MICR usually consists of:
+    1. Cheque number (typically 8 digits)
+    2. Branch/routing code (typically 7 digits)
+    3. Account number (the rest, optionally followed by a transaction code)
     """
     if not micr_str:
         return None
-
+    
+    # Clean string and split by any non-digit separator (like : or -)
     s = micr_str.replace(" ", "")
     parts = [p for p in re.split(r'\D+', s) if p]
-
+    
     if len(parts) >= 3:
-        # parts[0]=cheque, parts[1]=branch, parts[2]=account, parts[3+]=padding
-        acc = parts[2]
-        # Strip trailing zeros that are padding (last segment is usually "000")
-        # Only strip if the last part looks like padding (all zeros, <=4 digits)
-        if len(parts) >= 4:
-            tail = parts[3]
-            if re.fullmatch(r'0+', tail) and len(tail) <= 4:
-                pass  # drop it — don't append
-            else:
-                acc = acc + tail  # it's real data
-        return acc.rstrip('0') if acc.endswith('000') else acc
-
+        # e.g. 00000007, 05400561, 0000567901558399000
+        return "".join(parts[2:])
     elif len(parts) == 2:
-        # e.g. "125137560210127:0113200460350001000"
-        # first part covers cheque+branch (>=14 digits), second is account+padding
+        # e.g. 125137560210127 : 0113200460350001000
+        # If the first part is long enough to cover both cheque and branch
         if len(parts[0]) >= 14:
-            acc = parts[1]
-            return re.sub(r'0{1,4}$', '', acc) if acc.endswith('000') else acc
+            return "".join(parts[1:])
         else:
             return parts[1]
-
     elif len(parts) == 1:
-        # No separators — cheque(8) + branch(7) + account
+        # No separators found, it's a single contiguous string of digits
+        # Typical prefix is 8 (cheque) + 7 (branch) = 15 digits
         if len(s) > 15:
-            acc = s[15:]
-            return re.sub(r'0{1,4}$', '', acc) if acc.endswith('000') else acc
+            return s[15:]
         return s
-
+    
     return None
 
 
@@ -803,25 +874,27 @@ def extract_payee(dets):
 def extract_micr(dets, image_height):
     """
     Extract the MICR line from the bottom of the cheque.
-    Format: "CHEQUE_NO"BRANCH_CODE:ACCOUNT_NO"TRANSACTION"
+    It typically contains a long string of digits and special characters.
     """
     cands = []
-
-    # Lower threshold to 40% — some cheques have MICR higher up
-    min_y = image_height * 0.40 if image_height else 0
-
+    
+    # Bottom threshold: MICR is usually at the bottom-most part of the cheque.
+    # We use 50% of the image height as a conservative threshold.
+    min_y = image_height * 0.5 if image_height else 0
+    
     for d in dets:
         if bbox_y1(d) < min_y:
             continue
-
+            
         t = d["text"].strip()
+        # The MICR line should have a substantial number of digits
         digs = re.sub(r"\D", "", t)
-        # Relax to 12 digits to catch partial reads
-        if len(digs) >= 12:
+        if len(digs) >= 15:
+            # Prioritize detections by how close they are to the bottom of the image
             cands.append((bbox_y1(d), t))
-
+            
     if not cands:
         return None
-
-    # Return the lowest (bottommost) match
+        
+    # the lowest detection that matches our criteria
     return sorted(cands, key=lambda x: -x[0])[0][1]
